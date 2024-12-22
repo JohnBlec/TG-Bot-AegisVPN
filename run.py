@@ -1,6 +1,9 @@
 import asyncio
 import logging
 import sys
+import os
+
+from dotenv import load_dotenv
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.client.default import DefaultBotProperties
@@ -11,10 +14,10 @@ from aiogram.filters import Command
 
 from app.handlers import router, notification
 from app.database.models import async_main
-from config import TOKEN
 
 
-bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+load_dotenv()
+bot = Bot(token=os.getenv('TOKEN'), default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
 scheduler = AsyncIOScheduler()
