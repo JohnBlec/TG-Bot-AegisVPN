@@ -4,16 +4,19 @@ import sys
 import os
 
 from dotenv import load_dotenv
+from datetime import datetime
 
 from aiogram import Bot, Dispatcher, types
-from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.filters import Command
+from aiogram.client.default import DefaultBotProperties
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
-from aiogram.filters import Command
 
-from app.handlers import router, notification
+from app.handlers import router
 from app.database.models import async_main
+from app.database.requests import select_payment_terms as s_p_t, set_active_pay_term as set_act_p_t
 
 
 load_dotenv()
@@ -23,44 +26,33 @@ dp = Dispatcher()
 scheduler = AsyncIOScheduler()
 
 
-async def send_scheduled_message(chat_id: int, text: str):
+async def send_scheduled_message(chat_id: int, text: str, pay_term_id: int):
     try:
         await bot.send_message(chat_id=chat_id, text=text)
+        await set_act_p_t(pay_term_id)
     except Exception as e:
         logging.error(f"Ошибка при отправке сообщения: {e}")
 
 
-@dp.message(Command('schedule'))
-async def schedule_message_handler(message: types.Message):
-    """
-    Обрабатывает команду /schedule для планирования сообщения.
-    Пример команды: /schedule 2024-12-25 18:30 Поздравляю с Рождеством!
-    """
+async def notification():
     try:
-        # Парсим аргументы команды
-        args = message.text.split(maxsplit=3)
-        if len(args) < 4:
-            await message.reply("Использование: /schedule <YYYY-MM-DD> <HH:MM> <текст сообщения>")
-            return
+        u_s = await s_p_t()
+        for user, pay_term in u_s:
+            if pay_term.end_time == datetime.now().date():
+                send_time = f"{pay_term.end_time} 12:00"
+                text = 'Напоминаю, что сегодня нужно продлить подписку на ВПН!'
 
-        date_str, time_str, text = args[1], args[2], args[3]
-        send_time = f"{date_str} {time_str}"
+                send_datetime = datetime.strptime(send_time, '%Y-%m-%d %H:%M')
 
-        from datetime import datetime
-        send_datetime = datetime.strptime(send_time, '%Y-%m-%d %H:%M')
-
-        scheduler.add_job(
-            send_scheduled_message,
-            trigger=DateTrigger(run_date=send_datetime),
-            args=[message.chat.id, text]
-        )
-
-        await message.reply(f"Сообщение запланировано на {send_datetime}.")
-    except ValueError:
-        await message.reply("Ошибка: проверьте формат даты и времени. Использование: /schedule <YYYY-MM-DD> <HH:MM> <текст сообщения>")
+                scheduler.add_job(
+                    send_scheduled_message,
+                    trigger=DateTrigger(run_date=send_datetime),
+                    args=[user.tg_id, text, pay_term.id]
+                )
+    except ValueError as v:
+        logging.error(f"Ошибка в обработчике: {v}")
     except Exception as e:
         logging.error(f"Ошибка в обработчике: {e}")
-        await message.reply("Произошла ошибка при попытке запланировать сообщение.")
 
 
 async def main() -> None:

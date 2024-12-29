@@ -31,8 +31,9 @@ class PaymentTerm(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     id_user: Mapped[int] = mapped_column(ForeignKey('users.id'))
-    start_time = mapped_column(DateTime, default=datetime.now)
+    start_time = mapped_column(DateTime, default=datetime.now().date)
     end_time = mapped_column(DateTime)
+    active: Mapped[bool] = mapped_column(default=True)
 
 
 async def async_main():
