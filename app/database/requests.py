@@ -33,7 +33,7 @@ async def set_payment_term(tg_id: int, start_time: str, count_months: int) -> bo
         pt = await session.scalar(select(PaymentTerm).
                                   where(and_(PaymentTerm.id_user == user.id,
                                              PaymentTerm.active == True)))
-        if pt:
+        if not pt:
             if not start_time:
                 start_time = datetime.now().date()
             else:
@@ -56,7 +56,25 @@ async def select_payment_terms() -> list:
         return data
 
 
+async def get_payment_term(tg_id: int) -> list:
+    async with async_session() as session:
+        p_t = await session.execute(select(User, PaymentTerm)
+                                    .join(PaymentTerm, User.id == PaymentTerm.id_user)
+                                    .where(and_(User.tg_id == tg_id, PaymentTerm.active == True)))
+        data = p_t.all()
+        return data
+
+
 async def set_active_pay_term(pay_term_id: int) -> None:
     async with async_session() as session:
         await session(update(PaymentTerm).where(PaymentTerm.id == pay_term_id).values(active=False))
         await session.commit()
+
+
+async def get_user(tg_id: int) -> object:
+    async with async_session() as session:
+        result = await session.execute(select(User).where(User.tg_id == tg_id))
+        user = result.scalar_one_or_none()
+        if user:
+            return user
+        return None
