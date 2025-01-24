@@ -42,6 +42,7 @@ async def set_payment_term(tg_id: int, start_time: str, count_months: int) -> bo
                 start_time = datetime(year, month, day)
             end_time = start_time + relativedelta(months=count_months)
             session.add(PaymentTerm(id_user=user.id, start_time=start_time, end_time=end_time))
+            await session.execute(update(User).where(User.tg_id == tg_id).values(sub=True))
             await session.commit()
             return True
     return False
@@ -67,7 +68,13 @@ async def get_payment_term(tg_id: int) -> list:
 
 async def set_active_pay_term(pay_term_id: int) -> None:
     async with async_session() as session:
-        await session(update(PaymentTerm).where(PaymentTerm.id == pay_term_id).values(active=False))
+        p_t = await session.execute(select(User, PaymentTerm)
+                                    .join(PaymentTerm, User.id == PaymentTerm.id_user)
+                                    .where(and_(PaymentTerm.id == pay_term_id, PaymentTerm.active == True)))
+        data = p_t.all()
+        for u, t in data:
+            await session.execute(update(PaymentTerm).where(PaymentTerm.id == t.id).values(active=False))
+            await session.execute(update(User).where(User.id == u.id).values(sub=True))
         await session.commit()
 
 

@@ -24,7 +24,7 @@ class Date(StatesGroup):
 
 
 @router.message(CommandStart())
-async def command_start(message: Message) -> None:
+async def cmd_start(message: Message) -> None:
     result = await rq.set_user(message.from_user.id, message.from_user.full_name)
     if not result:
         await message.answer(f"Извините! произошла какая-то ошибка.\nПопробуйте позже...")
@@ -40,27 +40,82 @@ async def cmd_help(message: Message) -> None:
     await message.answer("📃 Список команд бота:\n\n"
                          "/chname - сменить имя в боте\n"
                          "/info - информация о сервисе (тарифы и оплата)\n"
+                         "/install_info - информация об установке сервиса на различные устройства\n"
                          "/profile - посмотреть профиль\n"
-                         "/set_notification - установить уведомление для продления подписки")
+                         "/set_notification - установить уведомление для продления подписки\n"
+                         "/del_notification - отключение уведомления")
+
+
+@router.message(Command('info'))
+async def cmd_start(message: Message) -> None:
+    await message.answer(f"🗂 Стоимость за использование нашим впн-сервисом составляет 150р/мес. "
+                         f"Если перевода не будет в течении недели, то мы посчитаем, "
+                         f"что данным продуктом вы не планируете пользоваться. "
+                         f"Следовательно вас придётся отключить.\n\n"
+                         f"⬛️  Т-Банк (Тинькофф) 🟨\n"
+                         f"Номер карты:\n"
+                         f"{html.code('2200701392412133')}\n"
+                         f"{html.code('Сафин Павел Римович')}\n"
+                         f"(Кликабельный текст)\n\n"
+                         f"Или по номеру телефона:\n"
+                         f"+79805104653\n\n"
+                         f"❓Если возникли вопросы, то пишите следующим лицам:\n"
+                         f"@johnblec (Павел)\n"
+                         f"@supremex3000 (Сергей)")
+
+
+@router.message(Command('install_info'))
+async def cmd_start(message: Message) -> None:
+    await message.answer(f"✍️ Инструкция по установке ВПН на устройства:\n"
+                         f"1. Скачиваем WireGuard на устройство (ПК, андроид, айфон);\n\n"
+                         f"💻 ПК: {html.link('СКАЧАТЬ', 'https://download.wireguard.com/windows-client/wireguard-installer.exe')}\n"
+                         f"📱 Android: {html.link('ССЫЛКА', 'https://play.google.com/store/apps/details?id=com.wireguard.android')}\n"
+                         f"🖱 IOS (iphone): {html.link('ССЫЛКА', 'https://itunes.apple.com/us/app/wireguard/id1441195209?ls=1&mt=8')}\n\n"
+                         f"2. Создаём туннель, отсканировав QR-код или загрузив файл конфигурации;\n\n"
+                         f"3. Готово к использованию.\n\n"
+                         f"❔Если возникли вопросы, то пишите:\n"
+                         f"@johnblec (Павел)\n"
+                         f"@supremex3000 (Сергей)")
 
 
 @router.message(Command('profile'))
 async def cmd_reg(message: Message) -> None:
     u = await rq.get_user(message.from_user.id)
     if u:
-        await message.answer(f"Данные вашего профиля:\n\n"
-                             f"ID: {u.tg_id}\n"
-                             f"ТГ имя: {message.from_user.full_name}\n"
-                             f"Имя в боте: {u.name}\n"
-                             f"Статус подписки: {u.sub}")
+        data = await rq.get_payment_term(u.tg_id)
+        if data:
+            for u, t in data:
+                await message.answer(f"Данные вашего профиля:\n\n"
+                                     f"ID: {u.tg_id}\n"
+                                     f"ТГ имя: {message.from_user.full_name}\n"
+                                     f"Имя в боте: {u.name}\n"
+                                     f"Статус подписки: Присутствует\n"
+                                     f"Дата окончания подписки: {str(t.end_time).split()[0] }")
+        else:
+            await message.answer(f"Данные вашего профиля:\n\n"
+                                 f"ID: {u.tg_id}\n"
+                                 f"ТГ имя: {message.from_user.full_name}\n"
+                                 f"Имя в боте: {u.name}\n"
+                                 f"Статус подписки: Отсутствует")
     else:
         await message.answer(f"Произошла ошибка! Попробуйте позже или свяжитесь с разработчиков @johnblec")
 
 
 @router.message(Command('chname'))
-async def cmd_reg(message: Message, state: FSMContext) -> None:
+async def cmd_chname(message: Message, state: FSMContext) -> None:
     await state.set_state(Register.name)
     await message.answer("Введите свои фамилию и инициалы (шаблон, Иванов И.):")
+
+
+@router.message(Command('del_notification'))
+async def cmd_del_notif(message: Message) -> None:
+    result = await rq.get_payment_term(message.from_user.id)
+    if result:
+        for u, t in result:
+            await rq.set_active_pay_term(t.id)
+            await message.answer("Оповещение выключено")
+    else:
+        await message.answer("На данный момент у вас нет активных оповещений.")
 
 
 @router.message(Register.name)
@@ -76,7 +131,7 @@ async def st_reg_name(message: Message, state: FSMContext) -> None:
 
 
 @router.message(Command('set_notification'))
-async def cmd_set_time(message: Message, state: FSMContext) -> None:
+async def cmd_set_notif(message: Message, state: FSMContext) -> None:
     await state.set_state(Date.date)
     await state.update_data(date='', tg_id=message.from_user.id)
     await message.answer("Когда вы оформили подписку?", reply_markup=kb.start_date)
@@ -176,8 +231,6 @@ async def cancel(callback: CallbackQuery, state: FSMContext) -> None:
 @router.message()
 async def echo_handler(message: Message) -> None:
     try:
-        # Send a copy of the received message
-        await message.send_copy(chat_id=message.chat.id)
+        await message.answer("Я ничего не понял(\nВоспользуйтесь готовыми командами.")
     except TypeError:
-        # But not all the types is supported to be copied so need to handle it
-        await message.answer("Nice try!")
+        await message.answer("Хорошая попытка!)")
