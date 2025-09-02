@@ -27,6 +27,20 @@ async def update_user_name(tg_id: int, name: str) -> bool:
     return False
 
 
+async def update_user_notif(tg_id: int) -> bool:
+    async with async_session() as session:
+        user = await session.scalar(select(User).where(User.tg_id == tg_id))
+
+        if user:
+            if user.notif:
+                await session.execute(update(User).where(User.tg_id == tg_id).values(notif=False))
+            else:
+                await session.execute(update(User).where(User.tg_id == tg_id).values(notif=True))
+            await session.commit()
+            return True
+    return False
+
+
 async def set_payment_term(tg_id: int, start_time: str, count_months: int) -> bool:
     async with async_session() as session:
         user = await session.scalar(select(User).where(User.tg_id == tg_id))
@@ -54,6 +68,13 @@ async def select_payment_terms() -> list:
                                             join(PaymentTerm, User.id == PaymentTerm.id_user).
                                             where(PaymentTerm.active == True))
         data = users_terms.all()
+        return data
+
+
+async def select_users() -> list:
+    async with async_session() as session:
+        users = await session.execute(select(User).where(User.notif == True))
+        data = users.all()
         return data
 
 

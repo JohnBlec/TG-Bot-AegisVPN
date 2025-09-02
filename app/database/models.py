@@ -24,6 +24,7 @@ class User(Base):
     tg_id = mapped_column(BigInteger)
     name: Mapped[str] = mapped_column(String(50))
     sub: Mapped[bool] = mapped_column(default=False)
+    notif: Mapped[bool] = mapped_column(default=False)
 
 
 class PaymentTerm(Base):

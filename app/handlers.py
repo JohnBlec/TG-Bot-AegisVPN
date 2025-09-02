@@ -48,7 +48,7 @@ async def cmd_help(message: Message) -> None:
 
 
 @router.message(Command('info'))
-async def cmd_start(message: Message) -> None:
+async def cmd_info(message: Message) -> None:
     await message.answer(f"🗂 Стоимость за использование нашим впн-сервисом составляет 150р/мес. "
                          f"Если перевода не будет в течении недели, то мы посчитаем, "
                          f"что данным продуктом вы не планируете пользоваться. "
@@ -66,7 +66,7 @@ async def cmd_start(message: Message) -> None:
 
 
 @router.message(Command('install_info'))
-async def cmd_start(message: Message) -> None:
+async def cmd_install_info(message: Message) -> None:
     await message.answer(f"✍️ Инструкция по установке ВПН на устройства:\n"
                          f"1. Скачиваем WireGuard на устройство (ПК, андроид, айфон);\n\n"
                          f"💻 ПК: {html.link('СКАЧАТЬ', 'https://download.wireguard.com/windows-client/wireguard-installer.exe')}\n"
@@ -80,7 +80,7 @@ async def cmd_start(message: Message) -> None:
 
 
 @router.message(Command('faq'))
-async def cmd_start(message: Message) -> None:
+async def cmd_faq(message: Message) -> None:
     await message.answer(f"FAQ:\n\n"
                          f"{html.blockquote('Откуда мне взять QR-код или файл для создания туннеля?')}\n"
                          f"Их можно получить, обратившись к @johnblec или @supremex3000\n\n"
@@ -145,11 +145,21 @@ async def st_reg_name(message: Message, state: FSMContext) -> None:
     await state.clear()
 
 
-@router.message(Command('set_notification'))
-async def cmd_set_notif(message: Message, state: FSMContext) -> None:
+@router.message(Command('set_notif_one_time'))
+async def cmd_set_notif_one_time(message: Message, state: FSMContext) -> None:
     await state.set_state(Date.date)
     await state.update_data(date='', tg_id=message.from_user.id)
     await message.answer("Когда вы оформили подписку?", reply_markup=kb.start_date)
+
+
+@router.message(Command('switch_notif_mod'))
+async def cmd_switch_notif_mod(message: Message) -> None:
+    await rq.update_user_notif(tg_id=message.from_user.id)
+    user = await rq.get_user(message.from_user.id)
+    if user.notif:
+        await message.answer("Включен режим ежемесячного уведомления")
+    else:
+        await message.answer("Выключен режим ежемесячного уведомления")
 
 
 @router.callback_query(F.data == 'now_date')
