@@ -102,23 +102,23 @@ async def cmd_profile(message: Message) -> None:
         data = await rq.get_payment_term(u.tg_id)
         if data:
             for u, t in data:
-                await message.answer(norif_message(u, t))
+                await message.answer(await norif_message(u, t))
         else:
-            await message.answer(norif_message(u))
+            await message.answer(await norif_message(u))
     else:
         await message.answer(f"Произошла ошибка! Попробуйте позже или свяжитесь с разработчиков @johnblec")
 
 
-async def norif_message(user, term=False):
+async def norif_message(user, term=False) -> str:
     message = f"Данные вашего профиля:\n\n" + \
               f"ID: {user.tg_id}\n" + \
               f"Имя в боте: {user.name}\n"
     if term:
         message += f"Дата окончания подписки: {str(term.end_time).split()[0]}\n"
     if user.notif:
-        return message + f"Авто-уведомления:Вкл"
+        return message + f"Авто-уведомления: Вкл"
     else:
-        return message + f"Авто-уведомления:Выкл"
+        return message + f"Авто-уведомления: Выкл"
 
 
 @router.message(Command('chname'))
