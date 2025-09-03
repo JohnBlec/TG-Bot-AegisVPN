@@ -44,7 +44,9 @@ async def cmd_help(message: Message) -> None:
                          "/faq - часто задаваемые вопросы\n"
                          "/profile - посмотреть профиль\n"
                          "/set_notification - установить уведомление для продления подписки\n"
-                         "/del_notification - отключение уведомления")
+                         "/del_notification - отключение уведомления\n"
+                         "/switch_notif_mod - вкл/выкл авто-уведомлений (1-е число каждого месяца)\n"
+                         "/cancel - отмена действия")
 
 
 @router.message(Command('info'))
@@ -94,26 +96,29 @@ async def cmd_faq(message: Message) -> None:
 
 
 @router.message(Command('profile'))
-async def cmd_reg(message: Message) -> None:
+async def cmd_profile(message: Message) -> None:
     u = await rq.get_user(message.from_user.id)
     if u:
         data = await rq.get_payment_term(u.tg_id)
         if data:
             for u, t in data:
-                await message.answer(f"Данные вашего профиля:\n\n"
-                                     f"ID: {u.tg_id}\n"
-                                     f"ТГ имя: {message.from_user.full_name}\n"
-                                     f"Имя в боте: {u.name}\n"
-                                     f"Статус подписки: Присутствует\n"
-                                     f"Дата окончания подписки: {str(t.end_time).split()[0] }")
+                await message.answer(norif_message(u, t))
         else:
-            await message.answer(f"Данные вашего профиля:\n\n"
-                                 f"ID: {u.tg_id}\n"
-                                 f"ТГ имя: {message.from_user.full_name}\n"
-                                 f"Имя в боте: {u.name}\n"
-                                 f"Статус подписки: Отсутствует")
+            await message.answer(norif_message(u))
     else:
         await message.answer(f"Произошла ошибка! Попробуйте позже или свяжитесь с разработчиков @johnblec")
+
+
+async def norif_message(user, term=False):
+    message = f"Данные вашего профиля:\n\n" + \
+              f"ID: {user.tg_id}\n" + \
+              f"Имя в боте: {user.name}\n"
+    if term:
+        message += f"Дата окончания подписки: {str(term.end_time).split()[0]}\n"
+    if user.notif:
+        return message + f"Авто-уведомления:Вкл"
+    else:
+        return message + f"Авто-уведомления:Выкл"
 
 
 @router.message(Command('chname'))
