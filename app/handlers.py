@@ -45,8 +45,7 @@ async def cmd_help(message: Message) -> None:
                          "/profile - посмотреть профиль\n"
                          "/set_notif_one_time - установить разовое уведомление, которое сработает 1 раз\n"
                          "/del_notification - отключение разового уведомления\n"
-                         "/switch_notif_mod - вкл/выкл авто-уведомлений (1-е число каждого месяца)\n"
-                         "/cancel - отмена действия")
+                         "/switch_notif_mod - вкл/выкл авто-уведомлений (1-е число каждого месяца)")
 
 
 @router.message(Command('info'))
