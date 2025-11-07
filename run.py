@@ -31,8 +31,6 @@ async def send_scheduled_message(chat_id: int, text: str, pay_term_id: int = 0):
         await bot.send_message(chat_id=chat_id, text=text)
         if pay_term_id != 0:
             await set_act_p_t(pay_term_id)
-        else:
-            await update_user_notif(chat_id)
     except Exception as e:
         logging.error(f"Ошибка при отправке сообщения: {e}")
 
