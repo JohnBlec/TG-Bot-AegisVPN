@@ -62,7 +62,7 @@ async def notification_every_month():
     try:
         s_u = await select_users()
         for user in s_u:
-            send_time = f"{datetime.now().date()} 12:00"
+            send_time = f"{datetime.now().date()} 18:44"
             text = 'Напоминаю, что сегодня нужно продлить подписку на ВПН!'
             send_datetime = datetime.strptime(send_time, '%Y-%m-%d %H:%M')
             scheduler.add_job(

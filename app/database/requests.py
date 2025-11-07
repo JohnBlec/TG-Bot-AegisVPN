@@ -74,7 +74,7 @@ async def select_payment_terms() -> list:
 async def select_users() -> list:
     async with async_session() as session:
         users = await session.execute(select(User).where(User.notif == True))
-        data = users.all()
+        data = users.scalars().all()
         return data
 
 
