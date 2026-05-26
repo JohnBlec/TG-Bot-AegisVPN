@@ -1,0 +1,16 @@
+services:
+  bot:
+    build: .
+    container_name: telegram_bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PYTHONUNBUFFERED: "1"
+      TZ: ${TZ:-Europe/Moscow}
+      SQLALCHEMY_URL: sqlite+aiosqlite:////app/data/bot.db
+    volumes:
+      - bot_data:/app/data
+
+volumes:
+  bot_data:
