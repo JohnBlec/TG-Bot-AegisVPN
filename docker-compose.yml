@@ -8,7 +8,6 @@ services:
     environment:
       PYTHONUNBUFFERED: "1"
       TZ: ${TZ:-Europe/Moscow}
-      SQLALCHEMY_URL: sqlite+aiosqlite:////app/data/bot.db
     volumes:
       - bot_data:/app/data
 
