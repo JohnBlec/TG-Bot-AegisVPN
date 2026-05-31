@@ -1,6 +1,6 @@
 from aiogram import html, Router, F
 from aiogram.filters import CommandStart, Command
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, BufferedInputFile
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 
@@ -9,6 +9,7 @@ from dateutil.relativedelta import relativedelta
 
 import app.database.requests as rq
 import app.keyboards as kb
+from app.backend_api import BackendAPIError, get_config, get_my_wg_clients, get_qr
 
 
 router = Router()
@@ -256,6 +257,111 @@ async def cancel(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.message.edit_text('Операция отменена...')
     await state.clear()
 
+
+
+
+def _format_subscription(subscription: dict) -> str:
+    if not subscription:
+        return "Подписка: не найдена"
+    end_date = subscription.get("current_period_end") or "—"
+    status_label = subscription.get("status_label") or subscription.get("status") or "—"
+    access = "есть" if subscription.get("has_access") else "нет"
+    return f"Подписка: {status_label}\nДата окончания: {end_date}\nДоступ по подписке: {access}"
+
+
+def _format_wg_clients(data: dict) -> str:
+    customer = data.get("customer") or {}
+    clients = data.get("wg_clients") or []
+    lines = ["🔐 Ваши VPN-клиенты"]
+    if customer.get("real_name"):
+        lines.append(f"Клиент: {customer['real_name']}")
+    lines.append("")
+    lines.append(_format_subscription(data.get("subscription") or {}))
+    lines.append("")
+    if not clients:
+        lines.append("WG-клиенты пока не привязаны к вашему Telegram ID.")
+        return "\n".join(lines)
+    for idx, client in enumerate(clients, start=1):
+        has_access = bool(client.get("has_vpn_access"))
+        access_text = "✅ доступ есть" if has_access else "❌ доступа нет"
+        reason = client.get("unavailable_reason") or ""
+        lines.append(f"{idx}. {client.get('wg_name') or 'WG-клиент'}")
+        if client.get("server_name"):
+            lines.append(f"   Сервер: {client['server_name']}")
+        lines.append(f"   VPN: {access_text}")
+        if reason:
+            lines.append(f"   Причина: {reason}")
+    return "\n".join(lines)
+
+
+@router.message(Command('my_vpn'))
+async def cmd_my_vpn(message: Message) -> None:
+    try:
+        data = await get_my_wg_clients(message.from_user.id)
+    except BackendAPIError as exc:
+        await message.answer(f"Не удалось получить данные VPN: {exc}")
+        return
+    clients = data.get("wg_clients") or []
+    reply_markup = kb.wg_clients_keyboard(clients) if clients else None
+    await message.answer(_format_wg_clients(data), reply_markup=reply_markup)
+
+
+@router.message(Command('my_config'))
+async def cmd_my_config(message: Message) -> None:
+    try:
+        data = await get_my_wg_clients(message.from_user.id)
+    except BackendAPIError as exc:
+        await message.answer(f"Не удалось получить список VPN-клиентов: {exc}")
+        return
+    clients = data.get("wg_clients") or []
+    if not clients:
+        await message.answer("WG-клиенты пока не привязаны к вашему Telegram ID.")
+        return
+    await message.answer("Выберите WG-клиент, для которого нужен файл конфигурации:", reply_markup=kb.wg_clients_keyboard(clients))
+
+
+@router.message(Command('my_qr'))
+async def cmd_my_qr(message: Message) -> None:
+    try:
+        data = await get_my_wg_clients(message.from_user.id)
+    except BackendAPIError as exc:
+        await message.answer(f"Не удалось получить список VPN-клиентов: {exc}")
+        return
+    clients = data.get("wg_clients") or []
+    if not clients:
+        await message.answer("WG-клиенты пока не привязаны к вашему Telegram ID.")
+        return
+    await message.answer("Выберите WG-клиент, для которого нужен QR-код:", reply_markup=kb.wg_clients_keyboard(clients))
+
+
+@router.callback_query(F.data.startswith('vpn_config:'))
+async def cb_vpn_config(callback: CallbackQuery) -> None:
+    await callback.answer()
+    client_id = int(callback.data.split(':', 1)[1])
+    try:
+        file = await get_config(callback.from_user.id, client_id)
+    except BackendAPIError as exc:
+        await callback.message.answer(f"Не удалось выдать файл конфигурации: {exc}")
+        return
+    await callback.message.answer_document(
+        BufferedInputFile(file.content, filename=file.filename),
+        caption="Файл конфигурации WireGuard. Импортируйте его в приложение WireGuard."
+    )
+
+
+@router.callback_query(F.data.startswith('vpn_qr:'))
+async def cb_vpn_qr(callback: CallbackQuery) -> None:
+    await callback.answer()
+    client_id = int(callback.data.split(':', 1)[1])
+    try:
+        file = await get_qr(callback.from_user.id, client_id)
+    except BackendAPIError as exc:
+        await callback.message.answer(f"Не удалось выдать QR-код: {exc}")
+        return
+    await callback.message.answer_document(
+        BufferedInputFile(file.content, filename=file.filename),
+        caption="QR-код WireGuard. Откройте WireGuard → добавить туннель → сканировать QR."
+    )
 
 @router.message()
 async def echo_handler(message: Message) -> None:
