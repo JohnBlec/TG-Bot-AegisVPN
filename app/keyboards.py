@@ -13,14 +13,3 @@ months = InlineKeyboardMarkup(inline_keyboard=[
      InlineKeyboardButton(text='12 мес.', callback_data='twelve_month')],
     [InlineKeyboardButton(text='Отмена', callback_data='cancel')]
 ])
-
-
-
-def wg_clients_keyboard(clients: list[dict]) -> InlineKeyboardMarkup:
-    rows = []
-    for client in clients:
-        client_id = client.get("id")
-        name = client.get("wg_name") or f"WG #{client_id}"
-        rows.append([InlineKeyboardButton(text=f"📄 Файл: {name}", callback_data=f"vpn_config:{client_id}")])
-        rows.append([InlineKeyboardButton(text=f"📲 QR: {name}", callback_data=f"vpn_qr:{client_id}")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
