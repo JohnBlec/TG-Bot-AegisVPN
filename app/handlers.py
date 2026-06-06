@@ -1,6 +1,6 @@
 from aiogram import html, Router, F
 from aiogram.filters import CommandStart, Command
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, BufferedInputFile
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 
@@ -9,6 +9,7 @@ from dateutil.relativedelta import relativedelta
 
 import app.database.requests as rq
 import app.keyboards as kb
+from app.backend_api import backend_api, BackendAPIError
 
 
 router = Router()
@@ -106,6 +107,156 @@ async def cmd_profile(message: Message) -> None:
             await message.answer(await norif_message(u))
     else:
         await message.answer(f"Произошла ошибка! Попробуйте позже или свяжитесь с разработчиков @johnblec")
+
+
+async def _load_wg_clients(message: Message) -> tuple[dict | None, list[dict]]:
+    try:
+        data = await backend_api.me(message.from_user.id)
+    except BackendAPIError as exc:
+        await message.answer(f"Не удалось получить данные VPN: {exc}")
+        return None, []
+    except Exception:
+        await message.answer("Не удалось связаться с административным сервером. Попробуйте позже.")
+        return None, []
+
+    customer = data.get("customer") or {}
+    clients = data.get("wg_clients") or []
+    if not clients:
+        await message.answer(
+            "К вашему Telegram-аккаунту пока не привязаны WireGuard-клиенты. "
+            "Если вы уже оплатили VPN, напишите администратору."
+        )
+        return customer, []
+    return customer, clients
+
+
+def _format_vpn_status(customer: dict, clients: list[dict]) -> str:
+    sub_end = customer.get("subscription_end") or "—"
+    sub_status = customer.get("subscription_status") or "—"
+    lines = [
+        "🔐 Ваш VPN-профиль",
+        "",
+        f"Клиент: {customer.get('real_name') or '—'}",
+        f"Статус подписки: {sub_status}",
+        f"Оплачено до: {sub_end}",
+        "",
+        "WireGuard-клиенты:",
+    ]
+    for client in clients:
+        status = "🟢 доступ включён" if client.get("is_active") else "🔴 доступ выключен"
+        synced = client.get("last_synced_at") or "—"
+        lines.append(f"• {client.get('wg_name') or 'Без имени'} — {status}; синхронизация: {synced}")
+    return "\n".join(lines)
+
+
+@router.message(Command('vpn'))
+async def cmd_vpn(message: Message) -> None:
+    customer, clients = await _load_wg_clients(message)
+    if not clients:
+        return
+    await message.answer(
+        _format_vpn_status(customer or {}, clients),
+        reply_markup=kb.wg_clients_keyboard(clients, "menu"),
+    )
+
+
+@router.message(Command('vpn_status'))
+async def cmd_vpn_status(message: Message) -> None:
+    customer, clients = await _load_wg_clients(message)
+    if not clients:
+        return
+    await message.answer(_format_vpn_status(customer or {}, clients))
+
+
+@router.message(Command('vpn_config'))
+async def cmd_vpn_config(message: Message) -> None:
+    _, clients = await _load_wg_clients(message)
+    if not clients:
+        return
+    await message.answer("Выберите WireGuard-клиент, для которого нужно выдать .conf и QR-код:", reply_markup=kb.wg_clients_keyboard(clients, "config"))
+
+
+async def _send_wg_config_and_qr(message: Message, telegram_id: int, client_id: int, wg_name: str) -> None:
+    try:
+        config_file = await backend_api.config(telegram_id, client_id, wg_name)
+        await message.answer_document(
+            BufferedInputFile(config_file.content, filename=f"{wg_name or 'wireguard'}.conf"),
+            caption="Файл конфигурации WireGuard (.conf)",
+        )
+
+        # Сначала пробуем сделать PNG QR прямо из текста конфига — его удобно сканировать в приложении WireGuard.
+        try:
+            import io
+            import qrcode
+
+            config_text = await backend_api.config_text(telegram_id, client_id)
+            img = qrcode.make(config_text)
+            buffer = io.BytesIO()
+            img.save(buffer, format="PNG")
+            await message.answer_photo(
+                BufferedInputFile(buffer.getvalue(), filename=f"{wg_name or 'wireguard'}-qr.png"),
+                caption="QR-код для импорта в WireGuard",
+            )
+            return
+        except Exception:
+            pass
+
+        # Fallback: если библиотека qrcode не установлена, отправляем QR, который отдаёт wg-easy.
+        qr_file = await backend_api.qr(telegram_id, client_id, wg_name)
+        await message.answer_document(
+            BufferedInputFile(qr_file.content, filename=f"{wg_name or 'wireguard'}-qr.svg"),
+            caption="QR-код WireGuard. Для отправки картинкой установите в окружение бота пакет qrcode[pil].",
+        )
+    except BackendAPIError as exc:
+        await message.answer(f"Не удалось получить конфигурацию: {exc}")
+    except Exception:
+        await message.answer("Не удалось получить конфигурацию с административного сервера. Попробуйте позже.")
+
+
+@router.callback_query(F.data.startswith('wg:'))
+async def wg_callback(callback: CallbackQuery) -> None:
+    parts = callback.data.split(':')
+    if len(parts) != 3:
+        await callback.answer("Некорректная команда", show_alert=True)
+        return
+
+    _, action, raw_client_id = parts
+    if action == "cancel":
+        await callback.answer("Отменено")
+        await callback.message.edit_reply_markup(reply_markup=None)
+        return
+
+    try:
+        client_id = int(raw_client_id)
+    except ValueError:
+        await callback.answer("Некорректный клиент", show_alert=True)
+        return
+
+    try:
+        client = await backend_api.wg_client(callback.from_user.id, client_id)
+    except BackendAPIError as exc:
+        await callback.answer(str(exc), show_alert=True)
+        return
+    except Exception:
+        await callback.answer("Не удалось связаться с сервером", show_alert=True)
+        return
+
+    wg_name = client.get("wg_name") or f"wg-client-{client_id}"
+
+    if action == "menu":
+        status = "🟢 доступ включён" if client.get("is_active") else "🔴 доступ выключен"
+        await callback.answer(status, show_alert=True)
+        await callback.message.answer(
+            f"{wg_name}\nСтатус: {status}\nОплачено до: {client.get('subscription_end') or '—'}"
+        )
+        return
+
+    if action == "config":
+        await callback.answer("Отправляю конфигурацию")
+        await _send_wg_config_and_qr(callback.message, callback.from_user.id, client_id, wg_name)
+        return
+
+    await callback.answer("Неизвестная команда", show_alert=True)
 
 
 async def norif_message(user, term=False) -> str:
